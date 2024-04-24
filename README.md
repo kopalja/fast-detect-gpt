@@ -35,30 +35,16 @@ setting</b> (utilizing surrogate models) targets ChatGPT and GPT-4 generations. 
 * Python3.8
 * PyTorch1.10.0
 * Setup the environment:
-  ```bash setup.sh```
+  ```pip install -r requirements.txt```
   
 (Notes: our experiments are run on 1 GPU of Tesla A100 with 80G memory.)
 
-## Local Demo
-Please run following command locally for an interactive demo:
+## Evaluate on dataset
+Please run following command:
 ```
 python scripts/local_infer.py --data <path to csv with 'text', 'label' and 'split' columns>
 ```
-where the default reference model is gpt-neo-2.7B.
 
-Or we could use gpt-j-6B for a more accurate detection:
-```
-python scripts/local_infer.py  --reference_model_name gpt-j-6B
-```
-
-
-An example (using gpt-j-6B) looks like
-```
-Please enter your text: (Press Enter twice to start processing)
-Disguised as police, they broke through a fence on Monday evening and broke into the cargo of a Swiss-bound plane to take the valuable items. The audacious heist occurred at an airport in a small European country, leaving authorities baffled and airline officials in shock.
-
-Fast-DetectGPT criterion is 1.9299, suggesting that the text has a probability of 87% to be fake.
-```
 
 ## Workspace
 Following folders are created for our experiments:
