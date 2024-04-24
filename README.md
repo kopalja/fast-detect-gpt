@@ -42,7 +42,7 @@ setting</b> (utilizing surrogate models) targets ChatGPT and GPT-4 generations. 
 ## Local Demo
 Please run following command locally for an interactive demo:
 ```
-python scripts/local_infer.py
+python scripts/local_infer.py --data <path to csv with 'text', 'label' and 'split' columns>
 ```
 where the default reference model is gpt-neo-2.7B.
 
