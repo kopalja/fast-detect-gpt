@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 import random
 
+import pandas as pd
 import numpy as np
 import torch
 import os
@@ -12,6 +13,16 @@ import argparse
 import json
 from model import load_tokenizer, load_model
 from fast_detect_gpt import get_sampling_discrepancy_analytic
+
+from sklearn.metrics import accuracy_score, roc_curve, auc, f1_score
+
+
+
+def auc_from_pred(targets, predictions):
+    fpr, tpr, _ = roc_curve(targets, predictions,  pos_label=1)
+    return auc(fpr, tpr)
+
+
 
 # estimate the probability according to the distribution of our test results on ChatGPT and GPT-4
 class ProbEstimator:
@@ -76,9 +87,55 @@ def run(args):
         prob = prob_estimator.crit_to_prob(crit)
         print(f'Fast-DetectGPT criterion is {crit:.4f}, suggesting that the text has a probability of {prob * 100:.0f}% to be fake.')
         print()
+        
+def run_on_dataframe(df, args):
+    # load model
+    scoring_tokenizer = load_tokenizer(args.scoring_model_name, args.dataset, args.cache_dir)
+    scoring_model = load_model(args.scoring_model_name, args.device, args.cache_dir)
+    scoring_model.eval()
+    if args.reference_model_name != args.scoring_model_name:
+        reference_tokenizer = load_tokenizer(args.reference_model_name, args.dataset, args.cache_dir)
+        reference_model = load_model(args.reference_model_name, args.device, args.cache_dir)
+        reference_model.eval()
+    # evaluate criterion
+    name = "sampling_discrepancy_analytic"
+    criterion_fn = get_sampling_discrepancy_analytic
+    prob_estimator = ProbEstimator(args)
+    # input text
+    
+    print('Local demo for Fast-DetectGPT, where the longer text has more reliable result.')
+    index = 0
+    targets, predictions = [], []
+    for row in df.itertuples():
+        index += 1
+        text = row.text
+        
+        # evaluate text
+        tokenized = scoring_tokenizer(text, return_tensors="pt", padding=True, return_token_type_ids=False).to(args.device)
+        labels = tokenized.input_ids[:, 1:]
+        with torch.no_grad():
+            logits_score = scoring_model(**tokenized).logits[:, :-1]
+            if args.reference_model_name == args.scoring_model_name:
+                logits_ref = logits_score
+            else:
+                tokenized = reference_tokenizer(text, return_tensors="pt", padding=True, return_token_type_ids=False).to(args.device)
+                assert torch.all(tokenized.input_ids[:, 1:] == labels), "Tokenizer is mismatch."
+                logits_ref = reference_model(**tokenized).logits[:, :-1]
+            crit = criterion_fn(logits_ref, logits_score, labels)
+        # estimate the probability of machine generated text
+        prob = prob_estimator.crit_to_prob(crit)
+        
+        targets.append(row.label)
+        predictions.append(prob)
+        
+        # print(f'Fast-DetectGPT criterion is {crit:.4f}, suggesting that the text has a probability of {prob * 100:.0f}% to be fake.')
+        if index % 100 == 0:
+            print(f"({index} samples) AUC: ", auc_from_pred(targets, predictions))
+            print(f"({index} samples) Accuracy:", accuracy_score(targets, [round(p) for p in predictions]))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--data', type=str, required=True)
     parser.add_argument('--reference_model_name', type=str, default="gpt-neo-2.7B")  # use gpt-j-6B for more accurate detection
     parser.add_argument('--scoring_model_name', type=str, default="gpt-neo-2.7B")
     parser.add_argument('--dataset', type=str, default="xsum")
@@ -87,7 +144,10 @@ if __name__ == '__main__':
     parser.add_argument('--cache_dir', type=str, default="../cache")
     args = parser.parse_args()
 
-    run(args)
+    df = pd.read_csv(args.data)
+    df = df[["text", "label", "split"]]
+    test = df[df["split"] == "test"]
+    run_on_dataframe(test, args)
 
 
 
